@@ -1,0 +1,12 @@
+.DS_Store
+build/
+app/.build/
+app/.swiftpm/
+__pycache__/
+
+# Personal content stays out of the public repo in plain text; content.vault and
+# web/content.enc hold the sealed copies (tools/lock.mjs).
+.passcode
+content/
+web/content.json
+app/Sources/Coach/Resources/content.json

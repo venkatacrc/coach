@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="description" content="A personal coach for career, leadership, hands-on craft, a gig of your own, family and a happy life.">
+    <title>Coach</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <div id="app">
+        <header class="topbar">
+            <div class="brand"><span class="logo" aria-hidden="true"></span> Coach</div>
+            <div class="datenav" id="datenav">
+                <button class="icon-btn" id="prev-day" aria-label="Previous">‹</button>
+                <button class="date-label" id="date-label"></button>
+                <button class="icon-btn" id="next-day" aria-label="Next">›</button>
+            </div>
+            <button class="icon-btn" id="open-drawer" aria-label="Settings and backup">☰</button>
+        </header>
+        <main id="view"></main>
+        <nav class="tabs" id="tabs">
+            <button data-tab="today"><span>☀️</span>Today</button>
+            <button data-tab="grow"><span>📚</span>Grow</button>
+            <button data-tab="review"><span>📓</span>Review</button>
+            <button data-tab="plan"><span>🎯</span>Plan</button>
+        </nav>
+    </div>
+
+    <div class="backdrop" id="backdrop" hidden></div>
+    <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer-head">
+            <div class="brand"><span class="logo" aria-hidden="true"></span> Coach</div>
+            <button class="icon-btn" id="close-drawer" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+
+    <form class="gate" id="gate" hidden>
+        <div class="gate-card">
+            <div class="logo big" aria-hidden="true"></div>
+            <h1>Coach</h1>
+            <p class="muted">This coach is private. Enter your passcode.</p>
+            <input type="password" id="gate-pass" class="line" autocomplete="current-password" placeholder="Passcode" required>
+            <label class="small"><input type="checkbox" id="gate-remember" checked> Remember on this device</label>
+            <button class="btn primary" id="gate-go" type="submit">Unlock</button>
+            <p class="gate-error" id="gate-error" hidden></p>
+        </div>
+    </form>
+
+    <dialog id="lesson-dialog"></dialog>
+    <dialog id="goal-dialog"></dialog>
+    <dialog id="block-dialog"></dialog>
+    <div class="toast" id="toast" hidden></div>
+    <input type="file" id="import-file" accept="application/json,.json" hidden>
+
+    <script src="app.js"></script>
+</body>
+</html>
