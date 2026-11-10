@@ -102,11 +102,23 @@ struct LessonView: View {
                         Text(coach.fill(lesson.idea)).font(.body).lineSpacing(3)
                         callout("Practice this week", coach.fill(lesson.practice), color, italic: false)
                         callout("Ask yourself", coach.fill(lesson.ask), color.opacity(0.6), italic: true)
-                        if let read = lesson.read, !read.isEmpty {
-                            SectionTitle("Read")
-                            ForEach(read, id: \.self) { r in
+                        let free = (lesson.read ?? []).filter { $0.url != nil }
+                        let books = (lesson.read ?? []).filter { $0.url == nil }
+                        if !free.isEmpty {
+                            SectionTitle("Read (free)")
+                            ForEach(free, id: \.self) { r in
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    if let s = r.url, let url = URL(string: s) { Link("\(r.title) ↗", destination: url).bold() }
+                                    if let by = r.by { Text("· \(by)").foregroundStyle(.secondary) }
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        if !books.isEmpty {
+                            SectionTitle("Go deeper")
+                            ForEach(books, id: \.self) { r in
                                 HStack(spacing: 4) {
-                                    if let s = r.url, let url = URL(string: s) { Link(r.title, destination: url).bold() } else { Text(r.title).italic() }
+                                    Text(r.title).italic()
                                     if let by = r.by { Text("· \(by)").foregroundStyle(.secondary) }
                                 }
                             }

@@ -683,6 +683,13 @@ function renderGrow() {
     return frag;
 }
 
+function readings(list, title) {
+    if (!list?.length) return null;
+    return h('div', { class: 'reading' }, h('h5', {}, title),
+        h('ul', {}, list.map((r) => h('li', {}, r.url ? h('a', { href: r.url, target: '_blank', rel: 'noopener' }, r.title + ' ↗') : h('em', {}, r.title),
+            r.by && h('span', { class: 'muted' }, ` · ${r.by}`)))));
+}
+
 function openLesson(id) {
     const l = lessonById[id];
     const t = trackById[l.track];
@@ -696,9 +703,8 @@ function openLesson(id) {
         h('p', { class: 'idea' }, fill(l.idea)),
         h('div', { class: 'callout' }, h('h5', {}, 'Practice this week'), h('p', {}, fill(l.practice))),
         h('div', { class: 'callout ask' }, h('h5', {}, 'Ask yourself'), h('p', {}, fill(l.ask))),
-        l.read?.length && h('div', { class: 'reading' }, h('h5', {}, 'Read'),
-            h('ul', {}, l.read.map((r) => h('li', {}, r.url ? h('a', { href: r.url, target: '_blank', rel: 'noopener' }, r.title) : h('em', {}, r.title),
-                r.by && h('span', { class: 'muted' }, ` · ${r.by}`))))),
+        readings(l.read?.filter((r) => r.url), 'Read (free)'),
+        readings(l.read?.filter((r) => !r.url), 'Go deeper'),
         h('h5', {}, 'My notes'),
         h('textarea', {
             placeholder: 'What you tried, what happened, what you\'ll do differently…', value: saved.note ?? '',
