@@ -121,7 +121,7 @@ enum Notifier {
         let now = Date()
         for offset in 0...1 {
             let day = Day.add(now, offset)
-            for b in coach.blocks(for: day) {
+            for b in coach.blocks(for: day) where !b.steps.isEmpty {
                 guard let fire = Day.cal.date(byAdding: .minute, value: b.start, to: day), fire > now else { continue }
                 let content = UNMutableNotificationContent()
                 content.title = "\(Day.clock(b.start)) · \(b.title)"

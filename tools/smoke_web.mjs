@@ -150,7 +150,7 @@ check('week review renders', await js(`document.querySelectorAll('.big3').length
 await shot('06-review-week');
 await js(`[...document.querySelectorAll('.segmented button')].find((b) => b.textContent === 'Progress').click(); true`);
 await sleep(150);
-check('progress shows 12 habits × 28 days', (await js(`document.querySelectorAll('.stat-row').length`)) === 12 && (await js(`document.querySelectorAll('.stat-row')[0].querySelectorAll('.dots i').length`)) === 28);
+check('progress shows 11 habits × 28 days', (await js(`document.querySelectorAll('.stat-row').length`)) === 11 && (await js(`document.querySelectorAll('.stat-row')[0].querySelectorAll('.dots i').length`)) === 28);
 await shot('07-review-progress');
 
 // Plan: add a suggested goal, tick a milestone.
@@ -170,10 +170,15 @@ await sleep(250);
 await js(`(() => { const i = document.querySelectorAll('#drawer input')[3]; i.value = 'Lakshmi'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); return true; })()`);
 await shot('09-drawer');
 await click('#close-drawer');
-await tab('today');
-await js(`document.querySelectorAll('.block-head').forEach((b) => { if (!b.parentElement.classList.contains('open')) b.click(); }); true`);
+await tab('plan');
+await js(`[...document.querySelectorAll('.day-chips button')].find((b) => b.textContent === 'Sun').click(); true`);
 await sleep(150);
 check('family name used in the plan', await js(`document.querySelector('#view').innerText.includes('with Lakshmi')`));
+check('autopilot blocks are quiet rows', (await js(`document.querySelectorAll('.rhythm-row.quiet-row').length`)) === 2);
+await js(`[...document.querySelectorAll('.day-chips button')].find((b) => b.textContent === 'Mon').click(); true`);
+await tab('today');
+check('today shows autopilot blocks as one line', (await js(`document.querySelectorAll('.quiet').length`)) >= 2);
+await shot('09b-today-quiet');
 
 // Merge: an older copy of a day must not overwrite the newer one; a new day must arrive.
 const merged = await js(`(() => {
@@ -226,7 +231,7 @@ await js(`document.querySelectorAll('.habit-row select')[1].value = '3'; documen
 await sleep(100);
 await shot('11-plan-habits');
 await tab('review');
-check('turned-off habit leaves progress', (await js(`document.querySelectorAll('.stat-row').length`)) === 11);
+check('turned-off habit leaves progress', (await js(`document.querySelectorAll('.stat-row').length`)) === 10);
 check('weekly target shows', await js(`document.querySelector('.stat-row').innerText.includes('3/week')`));
 await tab('plan');
 await js(`[...document.querySelectorAll('.btn')].find((b) => b.textContent === 'Reset plan').click(); true`);

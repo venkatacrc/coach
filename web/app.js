@@ -496,8 +496,9 @@ function renderToday() {
 
     if (openBlocksFor !== k) {
         openBlocks.clear();
-        if (current) openBlocks.add(current.id);
-        else if (isToday && next) openBlocks.add(next.id);
+        const first = current?.steps.length ? current
+            : isToday ? blocks.find((b) => b.start >= (current?.end ?? now) && b.steps.length) : null;
+        if (first) openBlocks.add(first.id);
         openBlocksFor = k;
     }
 
@@ -563,6 +564,14 @@ function renderToday() {
     frag.append(h('h4', { class: 'list-title' }, 'Your day'));
     for (const b of blocks) {
         const phase = current?.id === b.id ? 'now' : isToday && b.end <= now ? 'past' : '';
+        if (!b.steps.length) {
+            frag.append(h('div', { class: `quiet ${phase}`, style: { '--c': areaColor(b.area) } },
+                h('span', { class: 'time' }, clock(b.start)),
+                h('div', { class: 'grow' }, h('strong', {}, b.title, phase === 'now' && h('span', { class: 'pill' }, 'Now')),
+                    b.why && h('small', {}, b.why)),
+                h('button', { class: 'icon-btn sm', 'aria-label': `Adjust ${b.title}`, onclick: () => openBlockEditor(viewDate, b.id) }, '✎')));
+            continue;
+        }
         const n = b.steps.filter((s) => doneSet.has(s.key)).length;
         const open = openBlocks.has(b.id);
         frag.append(h('section', { class: `block ${phase} ${open ? 'open' : ''}`, style: { '--c': areaColor(b.area) } },
@@ -1174,10 +1183,12 @@ function renderRhythm() {
             class: x === day ? 'on' : '', onclick: () => { ui.planDay = x; saveUi(); render(); },
         }, x[0].toUpperCase() + x.slice(1)))),
         h('div', { class: 'rhythm' }, blocksFor(d, { all: true }).map((b) => h('div', {
-            class: 'rhythm-row' + (b.hidden ? ' skipped' : ''), style: { '--c': areaColor(b.area) },
+            class: 'rhythm-row' + (b.hidden ? ' skipped' : '') + (b.steps.some((s) => !s.hidden) ? '' : ' quiet-row'),
+            style: { '--c': areaColor(b.area) },
         },
             h('span', { class: 'time' }, clock(b.start)),
             h('div', { class: 'grow' }, h('strong', {}, b.title, b.hidden && h('small', {}, ' · skipped'), b.custom && h('small', {}, ' · yours')),
+                !b.steps.some((s) => !s.hidden) && b.why && h('small', { class: 'quiet-why' }, b.why),
                 h('ul', {}, b.steps.filter((s) => !s.hidden && (s.habit || s.app || s.track || s.custom)).map((s) => h('li', {}, s.text)))),
             h('button', { class: 'icon-btn sm', 'aria-label': `Adjust ${b.title}`, onclick: () => openBlockEditor(d, b.id) }, '✎')))),
         h('div', { class: 'row-buttons' },

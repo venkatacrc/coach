@@ -595,6 +595,18 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
     box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
 }
 
+/* Autopilot blocks: nothing to tick, one quiet line */
+.quiet { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; padding: 4px 4px 4px 12px; border-left: 3px dotted var(--c); color: var(--muted); }
+.quiet .time { flex: none; width: 58px; font-size: 0.85rem; font-weight: 600; }
+.quiet strong { font-weight: 600; font-size: 0.95rem; }
+.quiet small { display: block; font-size: 0.82rem; line-height: 1.35; }
+.quiet .pill { margin-left: 8px; }
+.quiet.past { opacity: 0.6; }
+.quiet .icon-btn { color: var(--muted); font-size: 1rem; }
+.rhythm-row.quiet-row { border-left-style: dotted; opacity: 0.75; }
+.rhythm-row.quiet-row strong { font-weight: 600; }
+.quiet-why { display: block; color: var(--muted); font-size: 0.84rem; margin-top: 2px; }
+
 /* Adjusting the plan */
 .adjust { display: block; margin: 10px 0 0 auto; font-size: 0.88rem; }
 .add-block { display: block; width: 100%; margin-top: 4px; border-style: dashed; color: var(--muted); }

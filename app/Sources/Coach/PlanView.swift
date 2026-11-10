@@ -133,6 +133,10 @@ struct PlanView: View {
                             if b.hidden { Text("· skipped").font(.caption).foregroundStyle(.secondary) }
                             if b.custom { Text("· yours").font(.caption).foregroundStyle(.secondary) }
                         }
+                        let quiet = !b.steps.contains { !$0.hidden }
+                        if quiet, let why = b.why {
+                            Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
                         ForEach(b.steps.filter { !$0.hidden && ($0.habit != nil || $0.app != nil || $0.track != nil || $0.custom) }) { s in
                             Text("• \(s.text)").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
@@ -141,7 +145,7 @@ struct PlanView: View {
                     Button { nav.editingBlock = BlockRef(day: date, block: b.id) } label: { Image(systemName: "pencil") }
                         .buttonStyle(.borderless).help("Adjust \(b.title)")
                 }
-                .opacity(b.hidden ? 0.5 : 1)
+                .opacity(b.hidden ? 0.5 : b.steps.contains { !$0.hidden } ? 1 : 0.7)
             }
             Button("+ Add block") { nav.editingBlock = BlockRef(day: date, block: nil) }
         }

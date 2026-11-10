@@ -37,10 +37,17 @@ struct TodayView: View {
                 }
                 .padding(20)
             }
-            .onAppear { nav.resetOpenBlocks(key, current ?? next) }
-            .onChange(of: key) { _, k in nav.resetOpenBlocks(k, current ?? next) }
+            .onAppear { nav.resetOpenBlocks(key, firstToOpen(blocks, current: current, isToday: isToday, now: now)) }
+            .onChange(of: key) { _, k in nav.resetOpenBlocks(k, firstToOpen(blocks, current: current, isToday: isToday, now: now)) }
         }
         .navigationTitle(Day.format(nav.date, "EEEEMMMMd"))
+    }
+
+    /// The block to open: the current one, or the next one with something to tick.
+    private func firstToOpen(_ blocks: [ResolvedBlock], current: ResolvedBlock?, isToday: Bool, now: Int) -> ResolvedBlock? {
+        if let current, !current.steps.isEmpty { return current }
+        guard isToday else { return nil }
+        return blocks.first { $0.start >= (current?.end ?? now) && !$0.steps.isEmpty }
     }
 
     private func hero(date: Date, isToday: Bool, now: Int, current: ResolvedBlock?, next: ResolvedBlock?) -> some View {
@@ -157,6 +164,37 @@ struct BlockCard: View {
     let toggle: () -> Void
 
     var body: some View {
+        if block.steps.isEmpty { quiet } else { card }
+    }
+
+    /// A block with nothing to tick runs on autopilot: one quiet line.
+    private var quiet: some View {
+        let color = coach.color(block.area)
+        return HStack(alignment: .top, spacing: 12) {
+            Rectangle().fill(color.opacity(0.5)).frame(width: 3)
+            Text(Day.clock(block.start)).font(.callout.weight(.semibold)).frame(width: 64, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(block.title).font(.callout.weight(.semibold))
+                    if phase == .now {
+                        Text("Now").font(.caption2.bold()).padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(color, in: Capsule()).foregroundStyle(.white)
+                    }
+                }
+                if let why = block.why { Text(why).font(.caption).fixedSize(horizontal: false, vertical: true) }
+            }
+            Spacer()
+            Button { nav.editingBlock = BlockRef(day: day, block: block.id) } label: { Image(systemName: "pencil") }
+                .buttonStyle(.borderless).help("Adjust \(block.title)")
+        }
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .opacity(phase == .past ? 0.6 : 1)
+    }
+
+    @ViewBuilder
+    private var card: some View {
         let color = coach.color(block.area)
         let done = Set(store.state.days[dayKey]?.done ?? [])
         let n = block.steps.filter { done.contains($0.key) }.count
