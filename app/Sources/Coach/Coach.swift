@@ -59,6 +59,7 @@ struct ResolvedStep: Identifiable {
     let track: String?
     let practice: String?
     let action: String?
+    var roadmap: RoadmapUse?
     var hidden = false
     var custom = false
     var days: [String]?
@@ -120,6 +121,7 @@ struct BlockRef: Identifiable, Hashable {
 struct Coach {
     let content: CoachContent
     let state: CoachState
+    var pomo: [String: PomoTime] = [:]
 
     var habitById: [String: Habit] { Dictionary(uniqueKeysWithValues: content.rhythm.habits.map { ($0.id, $0) }) }
     func area(_ id: String) -> Area? { content.rhythm.areas.first { $0.id == id } }
@@ -182,12 +184,12 @@ struct Coach {
         var out: [ResolvedBlock] = []
 
         func step(_ blockId: String, _ sid: String, text: String, app: String?, habit: String?, track: String? = nil,
-                  practice: String? = nil, action: String? = nil, hidden: Bool, custom: Bool, days: [String]? = nil) -> ResolvedStep {
+                  practice: String? = nil, action: String? = nil, roadmap: RoadmapUse? = nil, hidden: Bool, custom: Bool, days: [String]? = nil) -> ResolvedStep {
             ResolvedStep(
                 key: "\(blockId).\(sid)", sid: sid, text: fill(text),
                 habit: habit.flatMap { habitById[$0] != nil && habitOn($0) ? $0 : nil },
                 app: app.flatMap { self.app($0) != nil ? $0 : nil },
-                track: track, practice: practice, action: action, hidden: hidden, custom: custom, days: days)
+                track: track, practice: practice, action: action, roadmap: roadmap, hidden: hidden, custom: custom, days: days)
         }
         func added(_ blockId: String) -> [ResolvedStep] {
             (c.addedSteps["\(tid)/\(blockId)"] ?? []).filter { applies($0.days) }.map {
@@ -209,7 +211,7 @@ struct Coach {
                 guard let text = over ?? s.text.resolve(wd) else { continue }
                 steps.append(step(b.id, s.id, text: text, app: pick(so?.app?.on(wd), s.app?.resolve(wd)),
                                   habit: pick(so?.habit?.on(wd), s.habit), track: s.track?.resolve(wd),
-                                  practice: s.practice, action: s.action, hidden: sHidden, custom: false))
+                                  practice: s.practice, action: s.action, roadmap: s.roadmap, hidden: sHidden, custom: false))
             }
             steps += added(b.id)
             func field(_ m: DayMap<String>?, _ base: String) -> String { m?.on(wd).flatMap { $0.isEmpty ? nil : $0 } ?? base }
@@ -307,7 +309,6 @@ struct Coach {
         if w.energies.count >= 3 && avg(w.energies) < 3 { problems.append("energy") }
         if rate("build") < 0.5 { problems.append("build") }
         if rate("family", "oneone") < 0.6 { problems.append("family") }
-        if let g = w.stats["gig"], g.planned > 0, g.done == 0 { problems.append("gig") }
         if rate("lead") < 0.4 { problems.append("lead") }
         if rate("reflect") < 0.5 { problems.append("reflect") }
         if rate("sadhana") < 0.5 { problems.append("sadhana") }

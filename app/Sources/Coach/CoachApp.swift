@@ -44,6 +44,8 @@ final class Nav: ObservableObject {
     @Published var quarter = Day.quarter(Date())
     @Published var rhythmDay = Day.weekday(Date())
     @Published var editingGoal: Goal?
+    @Published var roadmapStepId: String?
+    @Published var openPhases: Set<String>?
     @Published var editingGoalIsNew = false
     @Published var editingBlock: BlockRef?
 
@@ -73,6 +75,8 @@ struct CoachMain: App {
                 .environmentObject(nav)
                 .frame(minWidth: 940, minHeight: 640)
                 .task { if notifyBlocks, let coach = store.coach { Notifier.schedule(coach) } }
+                .task { store.refreshPomo() }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in store.refreshPomo() }
         }
         .commands {
             CommandGroup(after: .newItem) {

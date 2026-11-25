@@ -12,6 +12,7 @@ struct PlanView: View {
         ScrollView {
             HStack(alignment: .top, spacing: 16) {
                 VStack(spacing: 14) {
+                    RoadmapList(coach: coach)
                     goals
                     adjust
                     habits

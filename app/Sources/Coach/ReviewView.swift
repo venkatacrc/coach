@@ -98,7 +98,7 @@ struct ReviewView: View {
         (\.family, "Family highlight", "A moment with the kids or with your wife"),
         (\.stop, "One thing to stop", "A commitment, a habit, or a meeting"),
     ]
-    private static let big3 = [("craft", "🛠 Craft"), ("lead", "🧭 Leadership"), ("gig", "🚀 Gig"), ("family", "🏡 Family")]
+    private static let big3 = [("lead", "🧭 Leadership"), ("family", "🏡 Family"), ("self", "🪔 Health & spirit")]
 
     private var week: some View {
         let mon = Day.monday(nav.date)
@@ -127,6 +127,24 @@ struct ReviewView: View {
                 Text("Mood \(avg(w.moods)) · Energy \(avg(w.energies)) · Lessons done \(lessons)").font(.caption).foregroundStyle(.secondary)
             }
             .card()
+            if coach.content.roadmap != nil {
+                let rw = coach.roadmapWeek(mon)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("🎯 Roadmap this week").font(.headline)
+                    if !rw.finished.isEmpty {
+                        Text("✅ Finished: \(rw.finished.map(\.step.title).joined(separator: "; "))").font(.callout.weight(.semibold))
+                        if let next = rw.next { (Text("Next week: ").bold() + Text(next.step.title)).font(.callout).foregroundStyle(.secondary) }
+                    } else if let next = rw.next {
+                        (Text("Not finished: ").bold() + Text(next.step.title)
+                            + Text(". It carries over to next week, and the finish date moves out a week. That's fine: keep going.").foregroundColor(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    SectionTitle(rw.finished.isEmpty ? "What got in the way?" : "What made it work?")
+                    editor(store.week(wk, \.stepNote), minHeight: 44)
+                    RoadmapStatus(p: coach.roadmapProgress())
+                }
+                .card(accent: .teal)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Look back").font(.headline)
                 ForEach(Self.weekFields, id: \.1) { path, label, hint in
@@ -138,7 +156,7 @@ struct ReviewView: View {
             .card()
             VStack(alignment: .leading, spacing: 8) {
                 Text("Next week's Big 3").font(.headline)
-                Text("One outcome per area. Small and specific beats ambitious and vague.").foregroundStyle(.secondary)
+                Text("Craft and the gig are the roadmap step. One outcome for each of the rest: small and specific beats ambitious and vague.").foregroundStyle(.secondary)
                 ForEach(Self.big3, id: \.0) { key, label in
                     HStack {
                         Text(label).frame(width: 120, alignment: .leading)

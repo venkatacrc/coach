@@ -14,6 +14,8 @@ final class Store: ObservableObject {
     @Published private(set) var content: CoachContent?
     @Published var state = CoachState()
     @Published var errorMessage: String?
+    /// Focus time Simple Pomo logged against each roadmap step.
+    @Published private(set) var pomo: [String: PomoTime] = [:]
 
     static var stateURL: URL { AppFolder.url.appendingPathComponent("state.json") }
     private var saveTask: DispatchWorkItem?
@@ -29,7 +31,12 @@ final class Store: ObservableObject {
         }
     }
 
-    var coach: Coach? { content.map { Coach(content: $0, state: state) } }
+    var coach: Coach? { content.map { Coach(content: $0, state: state, pomo: pomo) } }
+
+    func refreshPomo() {
+        let t = PomoTime.load()
+        if t != pomo { pomo = t }
+    }
 
     /// The copy inside the .app first, then the SwiftPM resource bundle (used by `swift run`).
     func loadContent() {
@@ -85,6 +92,14 @@ final class Store: ObservableObject {
     func setFamilyName(_ id: String, _ name: String) {
         state.settings.family[id] = name
         state.settings.updated = nowMillis
+        scheduleSave()
+    }
+
+    func editRoadmap(_ change: (inout RoadmapState) -> Void) {
+        var r = state.roadmap
+        change(&r)
+        r.updated = nowMillis
+        state.roadmap = r
         scheduleSave()
     }
 
@@ -194,6 +209,7 @@ final class Store: ObservableObject {
         for (k, v) in incoming.goals where v.updated > (state.goals[k]?.updated ?? -1) { state.goals[k] = v; n += 1 }
         if incoming.settings.updated > state.settings.updated { state.settings = incoming.settings; n += 1 }
         if incoming.custom.updated > state.custom.updated { state.custom = incoming.custom; n += 1 }
+        if incoming.roadmap.updated > state.roadmap.updated { state.roadmap = incoming.roadmap; n += 1 }
         saveNow()
         return n
     }

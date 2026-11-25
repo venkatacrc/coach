@@ -10,7 +10,34 @@ struct CoachContent: Decodable {
     let wisdom: [Saying]
     let coach: CoachText
     let goals: [GoalSuggestion]
+    let roadmap: RoadmapContent?
     let version: String
+}
+
+struct RoadmapContent: Decodable {
+    let title: String
+    let goal: String
+    let hours: String
+    let hoursPerWeek: Int?
+    let phases: [RoadmapPhase]
+    let steps: [RoadmapStep]
+}
+
+struct RoadmapPhase: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+}
+
+struct RoadmapStep: Decodable, Identifiable {
+    let id: String
+    let phase: String
+    var title: String
+    var doneWhen: String
+    var weeks: Int?
+    let why: String
+    let apps: [String]?
+    let read: [Reading]?
 }
 
 struct Rhythm: Decodable {
@@ -66,6 +93,17 @@ struct StepSpec: Decodable {
     let track: ByDay?
     let practice: String?
     let action: String?
+    let roadmap: RoadmapUse?
+}
+
+/// `"roadmap": true` shows this week's roadmap step on a plan step; `"read"` shows its readings instead.
+enum RoadmapUse: Decodable {
+    case session, read
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        self = (try? c.decode(String.self)) == "read" ? .read : .session
+    }
 }
 
 /// A step field that is either one value or a `{weekday: value}` map.
@@ -175,6 +213,7 @@ struct CoachState: Codable {
     var goals: [String: Goal] = [:]
     var settings = Settings()
     var custom = Custom()
+    var roadmap = RoadmapState()
 
     init() {}
 
@@ -187,6 +226,7 @@ struct CoachState: Codable {
         goals = c.value(.goals, [:])
         settings = c.value(.settings, Settings())
         custom = c.value(.custom, Custom())
+        roadmap = c.value(.roadmap, RoadmapState())
     }
 }
 
@@ -329,6 +369,7 @@ struct WeekLog: Codable {
     var family = ""
     var stop = ""
     var big3: [String: String] = [:]
+    var stepNote = ""
     var updated: Double = 0
 
     init() {}
@@ -341,12 +382,41 @@ struct WeekLog: Codable {
         family = c.value(.family, "")
         stop = c.value(.stop, "")
         big3 = c.value(.big3, [:])
+        stepNote = c.value(.stepNote, "")
         updated = c.value(.updated, 0)
     }
 
     var isEmpty: Bool {
-        [wins, learned, drained, family, stop].allSatisfy { $0.isEmpty } && big3.values.allSatisfy { $0.isEmpty }
+        [wins, learned, drained, family, stop, stepNote].allSatisfy { $0.isEmpty } && big3.values.allSatisfy { $0.isEmpty }
     }
+}
+
+/// Roadmap progress: `done` maps step id to the day it was finished; `edits` rewords or re-estimates a step; `hours` is time you logged.
+struct RoadmapState: Codable {
+    var done: [String: String] = [:]
+    var skipped: [String: Bool] = [:]
+    var edits: [String: StepEdit] = [:]
+    var hours: [String: Double] = [:]
+    var started = ""
+    var updated: Double = 0
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        done = c.value(.done, [:])
+        skipped = c.value(.skipped, [:])
+        edits = c.value(.edits, [:])
+        hours = c.value(.hours, [:])
+        started = c.value(.started, "")
+        updated = c.value(.updated, 0)
+    }
+}
+
+struct StepEdit: Codable {
+    var title: String?
+    var doneWhen: String?
+    var weeks: Int?
 }
 
 struct Milestone: Codable, Hashable {

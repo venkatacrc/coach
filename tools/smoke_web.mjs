@@ -102,14 +102,66 @@ const after = await js(`document.querySelector('.ring span').textContent`);
 check('ticking a habit step moves the ring', before !== after, `${before} → ${after}`);
 check('tick is saved', await js(`Object.values(JSON.parse(localStorage.getItem('coach.state')).days)[0].done.length === 1`));
 
-// Seed a week where sleep and gig were missed, then reload: the coach should say so.
+// Roadmap: this week's goal is the first step; done moves on; a missed week pushes the finish date out.
+const steps = await js(`content.roadmap.steps.length`);
+check('week goal is roadmap step 1', await js(`document.querySelector('.week-goal .goal-text')?.textContent === content.roadmap.steps[0].title && document.querySelector('.week-goal').innerText.includes('step 1 of ${steps}')`));
+const finish0 = await js(`roadmapProgress().finish.getTime()`);
+check('finish date adds up the planned weeks', await js(`(() => { const p = roadmapProgress(); return Math.round((p.finish - addDays(mondayOf(new Date()), 6)) / WEEK_MS) === sumWeeks(p.active) - 1 && p.slip === 0; })()`));
+await js(`[...document.querySelectorAll('.week-goal .btn')].find((b) => b.textContent.includes('Done')).click(); true`);
+await sleep(150);
+check('done moves to step 2, finish date holds', await js(`document.querySelector('.week-goal .done-line')?.innerText.includes(content.roadmap.steps[0].title) && document.querySelector('.week-goal .goal-text').textContent === content.roadmap.steps[1].title && roadmapProgress().finish.getTime() === ${finish0}`));
+await shot('01b-week-goal');
+await js(`(() => {
+    const s = JSON.parse(localStorage.getItem('coach.state'));
+    const pad = (n) => String(n).padStart(2, '0');
+    const key = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const mon = mondayOf(new Date());
+    s.roadmap.started = key(addDays(mon, -28));
+    s.roadmap.done = { [content.roadmap.steps[0].id]: key(addDays(mon, -26)) };
+    localStorage.setItem('coach.state', JSON.stringify(s));
+    return true;
+})()`);
+await send('Page.reload');
+await waitFor(`!!document.querySelector('.week-goal .goal-text')`);
+check('missed weeks carry the step and move the finish date', await js(`(() => { const p = roadmapProgress(); return p.slip === 3 && p.hits === 1 && p.weeks === 5 && document.querySelector('.week-goal').innerText.includes('3 weeks later') && document.querySelector('.week-goal .goal-text').textContent === content.roadmap.steps[1].title; })()`));
+check('pace estimate shows after 4 weeks', await js(`document.querySelector('.week-goal').innerText.includes('At your pace so far (25% of the planned speed)')`));
+check('time on the current step is counted and flagged', await js(`(() => { const p = roadmapProgress(); const t = document.querySelector('.week-goal p.over'); return p.took[content.roadmap.steps[0].id] === 3 && p.elapsed === daysBetween(keyOf(addDays(mondayOf(new Date()), -26)), todayKey()) && !!t && t.innerText.includes('Day ' + p.elapsed + ' on this step'); })()`));
+await shot('01c-week-goal-behind');
+
+// The focus blocks show this week's step; 🍅 hands it to Simple Pomo, whose logged time comes back as hours.
+check('focus blocks carry this week\'s step', await js(`(() => {
+    const st = content.rhythm.templates.weekday.blocks.find((b) => b.id === 'build').steps[0];
+    const el = renderStep(todayKey(), makeStep('build', st.id, { ...st, text: 'x' }), false);
+    return el.querySelector('.practice')?.innerText.includes(roadmapProgress().current.title) && !!el.querySelector('a.pomo');
+})()`));
+check('focus link hands the step to Simple Pomo', await js(`(() => {
+    const u = new URL(document.querySelector('.week-goal a.pomo').href), s = roadmapProgress().current, q = u.searchParams;
+    return u.href.startsWith(appById.simple_pomo.web) && q.get('task') === s.title && q.get('ref') === 'coach:' + s.id
+        && q.get('est') === String(Math.round(s.weeks * hoursPerWeek() * 60 / 25)) && q.get('start') === '1';
+})()`));
+await js(`(() => {
+    const id = roadmapProgress().current.id, t0 = Date.now() - 86400000;
+    const focus = (i) => ({ id: 's' + i, taskId: 't1', phase: 'focus', startedAt: new Date(t0 + i * 3e6).toISOString(), endedAt: new Date(t0 + i * 3e6 + 25 * 6e4).toISOString() });
+    localStorage.setItem('simplepomo.store.v1', JSON.stringify({
+        tasks: [{ id: 't1', title: 'x', ref: 'coach:' + id }, { id: 't2', title: 'other' }],
+        sessions: [focus(0), focus(1), focus(2), { ...focus(3), phase: 'shortBreak' }, { ...focus(4), taskId: 't2' }],
+    }));
+    return true;
+})()`);
+await send('Page.reload');
+await waitFor(`!!document.querySelector('.week-goal .goal-text')`);
+check('pomodoros count as hours on the step', await js(`document.querySelector('.week-goal').innerText.includes('🍅 3 pomodoros, 1.5 h') && roadmapProgress().current.hours === 1.5`));
+await js(`document.querySelector('.week-goal').scrollIntoView(); true`);
+await shot('01d-week-goal-pomo');
+
+// Seed a week where sleep was missed, then reload: the coach should say so.
 await js(`(() => {
     const s = JSON.parse(localStorage.getItem('coach.state'));
     const pad = (n) => String(n).padStart(2, '0');
     const key = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
     for (let i = 1; i <= 7; i++) {
         const d = new Date(); d.setDate(d.getDate() - i);
-        s.days[key(d)] = { done: ['sadhana.chant', 'build.code', 'build.ship', 'family-pm.tea', 'oneone.time', 'reflect.review', 'shuttle-am.lesson', 'family.breakfast', 'family.together', 'out.oneone', 'kids.choice', 'review.week'], mood: 4, energy: 2, updated: Date.now() };
+        s.days[key(d)] = { done: ['sadhana.chant', 'build.roadmap', 'family-pm.tea', 'oneone.time', 'reflect.review', 'shuttle-am.lesson', 'family.breakfast', 'family.together', 'out.oneone', 'kids.choice', 'review.week'], mood: 4, energy: 2, updated: Date.now() };
     }
     localStorage.setItem('coach.state', JSON.stringify(s));
     return true;
@@ -146,15 +198,35 @@ check("tomorrow's top 3 lands on tomorrow", await js(`Object.values(JSON.parse(l
 await shot('05-review-evening');
 await js(`[...document.querySelectorAll('.segmented button')].find((b) => b.textContent === 'Week').click(); true`);
 await sleep(150);
-check('week review renders', await js(`document.querySelectorAll('.big3').length === 4`));
+check('week review renders', await js(`document.querySelectorAll('.big3').length === 3`));
+check('week review says the step carries over', await js(`document.querySelector('.week-goal').innerText.includes('Not finished: ' + content.roadmap.steps[1].title)`));
 await shot('06-review-week');
 await js(`[...document.querySelectorAll('.segmented button')].find((b) => b.textContent === 'Progress').click(); true`);
 await sleep(150);
-check('progress shows 11 habits × 28 days', (await js(`document.querySelectorAll('.stat-row').length`)) === 11 && (await js(`document.querySelectorAll('.stat-row')[0].querySelectorAll('.dots i').length`)) === 28);
+check('progress shows 10 habits × 28 days', (await js(`document.querySelectorAll('.stat-row').length`)) === 10 && (await js(`document.querySelectorAll('.stat-row')[0].querySelectorAll('.dots i').length`)) === 28);
 await shot('07-review-progress');
 
-// Plan: add a suggested goal, tick a milestone.
+// Plan: the roadmap list, then a suggested goal and a milestone.
 await tab('plan');
+check('roadmap lists phases with the current step open', await js(`document.querySelectorAll('.roadmap .phase').length === content.roadmap.phases.length && document.querySelector('.roadmap .lessons button.current')?.innerText.includes(content.roadmap.steps[1].title)`));
+await shot('08a-roadmap');
+await js(`document.querySelector('.roadmap .lessons button.current').click(); true`);
+await sleep(150);
+check('step dialog has links', await js(`document.querySelector('#step-dialog').open && document.querySelectorAll('#step-dialog .reading a').length > 0`));
+check('plan shows planned vs actual', await js(`document.querySelector('.roadmap').innerText.includes('planned at 1 week and took 3 days (0.4× the plan)') && document.querySelector('.roadmap .tag.took')?.textContent === 'took 3 days'`));
+await js(`(() => { const sel = document.querySelector('#step-dialog .time select'); sel.value = '2'; sel.dispatchEvent(new Event('change')); return true; })()`);
+await sleep(100);
+check('a bigger estimate moves the plan, not the finish', await js(`JSON.parse(localStorage.getItem('coach.state')).roadmap.edits[content.roadmap.steps[1].id]?.weeks === 2 && roadmapProgress().slip === 2`));
+await js(`(() => { const i = document.querySelector('#step-dialog input.hours'); i.value = '8'; i.dispatchEvent(new Event('input')); return true; })()`);
+check('typed hours win over Pomo', await js(`JSON.parse(localStorage.getItem('coach.state')).roadmap.hours[content.roadmap.steps[1].id] === 8 && roadmapSteps()[1].hours === 8`));
+await shot('08b-step');
+await js(`(() => { const sel = document.querySelector('#step-dialog .time select'); sel.value = '1'; sel.dispatchEvent(new Event('change')); return true; })()`);
+await sleep(100);
+await js(`[...document.querySelectorAll('#step-dialog .btn')].find((b) => b.textContent === 'Skip').click(); true`);
+await sleep(100);
+check('skipping a step moves to the next', await js(`roadmapProgress().current.id === content.roadmap.steps[2].id && roadmapProgress().active.length === content.roadmap.steps.length - 1`));
+await js(`[...document.querySelectorAll('#step-dialog .btn')].find((b) => b.textContent === 'Unskip').click(); document.querySelector('#step-dialog').close(); true`);
+await sleep(100);
 await js(`document.querySelector('.suggest').open = true; document.querySelector('.suggestion .link').click(); true`);
 await sleep(150);
 check('suggested goal added', (await js(`document.querySelectorAll('.goal').length`)) === 1);
@@ -231,7 +303,7 @@ await js(`document.querySelectorAll('.habit-row select')[1].value = '3'; documen
 await sleep(100);
 await shot('11-plan-habits');
 await tab('review');
-check('turned-off habit leaves progress', (await js(`document.querySelectorAll('.stat-row').length`)) === 10);
+check('turned-off habit leaves progress', (await js(`document.querySelectorAll('.stat-row').length`)) === 9);
 check('weekly target shows', await js(`document.querySelector('.stat-row').innerText.includes('3/week')`));
 await tab('plan');
 await js(`[...document.querySelectorAll('.btn')].find((b) => b.textContent === 'Reset plan').click(); true`);

@@ -23,6 +23,7 @@ struct ContentView: View {
                 }
                 .toolbar { toolbar }
                 .sheet(item: $nav.lessonId) { id in LessonView(coach: store.coach ?? coach, lessonId: id) }
+                .sheet(item: $nav.roadmapStepId) { id in RoadmapStepSheet(coach: store.coach ?? coach, stepId: id) }
                 .sheet(item: $nav.editingBlock) { ref in
                     BlockEditor(coach: store.coach ?? coach, ref: ref) { nav.editingBlock = nil }
                 }

@@ -18,6 +18,7 @@ struct TodayView: View {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 14) {
                         hero(date: date, isToday: isToday, now: now, current: current, next: next)
+                        if coach.content.roadmap != nil { RoadmapCard(coach: coach, date: date) }
                         focus(key: key)
                         coachCard(date: date)
                     }
@@ -272,6 +273,7 @@ struct BlockCard: View {
                 }
             }
             .padding(.leading, 22)
+            if let use = s.roadmap, coach.content.roadmap != nil { roadmapExtras(use) }
             if let tid = s.practice, let l = coach.practiceLesson(tid) {
                 Button { nav.lessonId = l.id } label: {
                     (Text("This week: ").bold() + Text(coach.fill(l.practice)))
@@ -283,6 +285,31 @@ struct BlockCard: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(.secondary.opacity(0.5)))
                 .padding(.leading, 22)
             }
+        }
+    }
+
+    @ViewBuilder private func roadmapExtras(_ use: RoadmapUse) -> some View {
+        let c = store.coach ?? coach
+        if let goal = c.roadmapProgress().current {
+            VStack(alignment: .leading, spacing: 6) {
+                Button { nav.roadmapStepId = goal.id } label: {
+                    (Text("🎯 ").bold() + Text(goal.step.title))
+                        .font(.callout).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(.teal.opacity(0.6)))
+                if use == .read {
+                    ForEach(goal.step.read ?? [], id: \.self) { r in
+                        if let u = r.url, let url = URL(string: u) { Link("📖 \(r.title) ↗", destination: url).font(.callout) }
+                    }
+                } else {
+                    StepTools(coach: c, step: goal)
+                }
+            }
+            .padding(.leading, 22)
+        } else {
+            Text("🎉 Roadmap complete").font(.caption).padding(.leading, 22)
         }
     }
 }

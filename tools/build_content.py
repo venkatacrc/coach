@@ -41,6 +41,28 @@ def by_day_values(value):
     return [value]
 
 
+def check_roadmap(roadmap, app_ids):
+    phase_ids = {p['id'] for p in roadmap['phases']}
+    step_ids = set()
+    for s in roadmap['steps']:
+        if s['id'] in step_ids:
+            errors.append(f"roadmap: duplicate step id {s['id']}")
+        step_ids.add(s['id'])
+        if s['phase'] not in phase_ids:
+            errors.append(f"roadmap {s['id']}: unknown phase {s['phase']}")
+        for key in ('title', 'doneWhen', 'why'):
+            if not s.get(key):
+                errors.append(f"roadmap {s['id']}: missing {key}")
+        if 'weeks' in s and s['weeks'] not in (1, 2, 3, 4, 6, 8):
+            errors.append(f"roadmap {s['id']}: weeks must be 1, 2, 3, 4, 6 or 8")
+        for a in s.get('apps', []):
+            if a not in app_ids:
+                errors.append(f"roadmap {s['id']}: unknown app {a}")
+        for r in s.get('read', []):
+            if not r.get('url', '').startswith('https://'):
+                errors.append(f"roadmap {s['id']}: reading without an https link")
+
+
 def check(rhythm, apps, tracks, coach, goals):
     app_ids = {a['id'] for a in apps['apps']}
     category_ids = {c['id'] for c in apps['categories']}
@@ -96,6 +118,8 @@ def check(rhythm, apps, tracks, coach, goals):
                         errors.append(f'{sw}: unknown track {track}')
                 if step.get('habit') and step['habit'] not in habit_ids:
                     errors.append(f"{sw}: unknown habit {step['habit']}")
+                if step.get('roadmap') not in (None, True, 'read'):
+                    errors.append(f"{sw}: roadmap must be true or \"read\"")
                 if step.get('action') not in (None, 'review', 'week'):
                     errors.append(f"{sw}: unknown action {step['action']}")
 
@@ -112,7 +136,7 @@ def check(rhythm, apps, tracks, coach, goals):
                     errors.append(f"{lesson['id']}: missing {key}")
 
     rules = {m['rule'] for m in coach['messages']}
-    for rule in ('welcome', 'sleep', 'mood', 'energy', 'build', 'family', 'gig', 'lead', 'reflect', 'sadhana',
+    for rule in ('welcome', 'sleep', 'mood', 'energy', 'build', 'family', 'lead', 'reflect', 'sadhana',
                  'adjust', 'levelup', 'streak', 'strong', 'weekly'):
         if rule not in rules:
             errors.append(f'coach.json: no message for rule {rule}')
@@ -133,8 +157,10 @@ def main():
     wisdom = load(CONTENT / 'wisdom.json')
     coach = load(CONTENT / 'coach.json')
     goals = load(CONTENT / 'goals.json')
+    roadmap = load(CONTENT / 'roadmap.json')
 
     check(rhythm, apps, tracks, coach, goals)
+    check_roadmap(roadmap, {a['id'] for a in apps['apps']})
     if errors:
         print('\n'.join(f'error: {e}' for e in errors), file=sys.stderr)
         sys.exit(1)
@@ -147,6 +173,7 @@ def main():
         'wisdom': wisdom,
         'coach': coach,
         'goals': goals,
+        'roadmap': roadmap,
     }
     body = json.dumps(merged, ensure_ascii=False, sort_keys=True)
     merged['version'] = hashlib.sha1(body.encode('utf-8')).hexdigest()[:10]
@@ -158,7 +185,7 @@ def main():
     lessons = sum(len(t['lessons']) for t in tracks)
     blocks = sum(len(t['blocks']) for t in rhythm['templates'].values())
     print(f"content {merged['version']}: {len(rhythm['templates'])} day templates, {blocks} blocks, "
-          f"{len(tracks)} tracks, {lessons} lessons, {len(apps['apps'])} apps, {len(wisdom)} sayings, {len(goals)} goals")
+          f"{len(tracks)} tracks, {lessons} lessons, {len(apps['apps'])} apps, {len(wisdom)} sayings, {len(goals)} goals, {len(roadmap['steps'])} roadmap steps")
 
 
 if __name__ == '__main__':

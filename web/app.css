@@ -338,6 +338,8 @@ select { width: 100%; min-height: 42px; padding: 6px 8px; border: 1px solid var(
 .step.done label > span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
 .tag { margin-left: 6px; font-size: 0.8rem; opacity: 0.8; }
 .extras { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 34px; }
+.week-goal .extras, .dialog-body .extras { margin: 4px 0 10px; }
+.chip.pomo { background: #fff0ee; border-color: #f4b6ab; color: #b3261e; }
 .chip {
     display: inline-flex;
     align-items: center;
@@ -450,6 +452,29 @@ select { width: 100%; min-height: 42px; padding: 6px 8px; border: 1px solid var(
 }
 .scale.energy button { font-size: 1rem; font-weight: 700; }
 .scale button.on { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 15%, transparent); }
+.week-goal, .roadmap { --c: var(--teal); border-left: 4px solid var(--teal); }
+.week-goal p.small { margin: 0 0 8px; }
+.week-goal .row-buttons { margin: 4px 0 12px; }
+.goal-text { margin: 2px 0 6px; font-size: 1.08rem; font-weight: 650; line-height: 1.35; }
+.done-line { margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--green) 12%, transparent); font-weight: 600; }
+p.status { margin: 6px 0 0; }
+.phase { border-top: 1px solid var(--line); }
+.phase:first-of-type { margin-top: 12px; }
+.phase-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 2px; border: none; background: none; text-align: left; }
+.chev.open { transform: rotate(90deg); }
+.roadmap .lessons { padding: 0 0 8px; }
+.lessons button.current { font-weight: 650; }
+.lessons button.current .tick { color: var(--c); }
+.lessons button.skipped { color: var(--faint); text-decoration: line-through; }
+.time-row { display: flex; align-items: center; gap: 10px; min-height: 38px; }
+.time-row > span:first-child { width: 92px; flex: none; font-weight: 600; }
+.time-row select.compact { width: auto; min-height: 34px; }
+.time-row input.hours { width: 100px; }
+.over, .over strong { color: #c2410c; }
+.tag.took { color: var(--muted); font-weight: 500; white-space: nowrap; }
+.tag.took.over { color: #c2410c; }
+.reword { margin-top: 12px; }
+.reword summary { color: var(--muted); font-weight: 600; cursor: pointer; }
 .big3 { display: flex; align-items: center; gap: 10px; }
 .big3 > span { flex: none; width: 110px; font-weight: 600; font-size: 0.92rem; margin-bottom: 6px; }
 .area-bars { display: flex; flex-direction: column; gap: 8px; }

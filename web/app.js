@@ -68,8 +68,13 @@ function emptyCustom() {
     return { blocks: {}, steps: {}, addedBlocks: {}, addedSteps: {}, habits: {}, updated: 0 };
 }
 
+/** Roadmap progress: `done` maps step id to the day it was finished; `edits` rewords or re-estimates a step; `hours` is time you logged. */
+function emptyRoadmap() {
+    return { done: {}, skipped: {}, edits: {}, hours: {}, started: '', updated: 0 };
+}
+
 function emptyState() {
-    return { version: 1, days: {}, lessons: {}, weeks: {}, goals: {}, settings: { family: {}, updated: 0 }, custom: emptyCustom() };
+    return { version: 1, days: {}, lessons: {}, weeks: {}, goals: {}, settings: { family: {}, updated: 0 }, custom: emptyCustom(), roadmap: emptyRoadmap() };
 }
 
 function loadState() {
@@ -118,6 +123,14 @@ function editWeek(k, fn) {
     saveState();
 }
 
+function editRoadmap(fn) {
+    const r = Object.assign(emptyRoadmap(), state.roadmap);
+    fn(r);
+    r.updated = Date.now();
+    state.roadmap = r;
+    saveState();
+}
+
 function setLesson(id, patch) {
     const l = Object.assign({}, state.lessons[id], patch, { updated: Date.now() });
     state.lessons[id] = l;
@@ -141,7 +154,7 @@ function mergeState(incoming) {
             }
         }
     }
-    for (const one of ['settings', 'custom']) {
+    for (const one of ['settings', 'custom', 'roadmap']) {
         if ((incoming[one]?.updated ?? 0) > (state[one]?.updated ?? 0)) {
             state[one] = incoming[one];
             changed++;
@@ -229,7 +242,7 @@ function blocksFor(d, { all = false } = {}) {
             if (!text) continue;
             steps.push(makeStep(b.id, s.id, {
                 text, app: pick(resolve(so.app, wd), resolve(s.app, wd)), habit: pick(resolve(so.habit, wd), s.habit),
-                track: resolve(s.track, wd), practice: s.practice, action: s.action, hidden: sHidden, custom: false,
+                track: resolve(s.track, wd), practice: s.practice, action: s.action, roadmap: s.roadmap, hidden: sHidden, custom: false,
             }));
         }
         for (const s of c.addedSteps[`${tid}/${b.id}`] ?? []) {
@@ -262,6 +275,7 @@ function makeStep(blockId, sid, s) {
         track: s.track ?? null,
         practice: s.practice ?? null,
         action: s.action ?? null,
+        roadmap: s.roadmap ?? null,
         hidden: s.hidden,
         custom: s.custom,
         days: s.days ?? null,
@@ -359,7 +373,6 @@ function coachMessages(today) {
     if (energies.length >= 3 && avg(energies) < 3) problems.push('energy');
     if (rate('build') < 0.5) problems.push('build');
     if (rate('family', 'oneone') < 0.6) problems.push('family');
-    if (stats.gig?.planned && !stats.gig.done) problems.push('gig');
     if (rate('lead') < 0.4) problems.push('lead');
     if (rate('reflect') < 0.5) problems.push('reflect');
     if (rate('sadhana') < 0.5) problems.push('sadhana');
@@ -483,6 +496,298 @@ function checkbox(checked, onchange, color) {
     return h('input', { type: 'checkbox', class: 'check', checked, onchange, style: color ? { '--c': color } : null });
 }
 
+// -- Roadmap --
+
+const WEEK_MS = 7 * 86400000;
+const fromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+const fullDate = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const phaseOf = (s) => content.roadmap.phases.find((p) => p.id === s.phase);
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+const DAY_MS = 86400000;
+const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / DAY_MS);
+const sumWeeks = (xs) => xs.reduce((n, s) => n + s.weeks, 0);
+const hoursPerWeek = () => content.roadmap.hoursPerWeek ?? 9;
+function fmtDays(d) {
+    if (d < 7) return plural(d, 'day');
+    const w = (d / 7).toFixed(1).replace(/\.0$/, '');
+    return `${w} week${w === '1' ? '' : 's'}`;
+}
+
+// Simple Pomo keeps its data in this origin's localStorage, so on the live site the coach can read it.
+const POMO_KEY = 'simplepomo.store.v1';
+const POMO_MIN = 25;
+
+/** Focus sessions Simple Pomo logged against each roadmap step, by step id. */
+function pomoTime() {
+    let store;
+    try { store = JSON.parse(localStorage.getItem(POMO_KEY) ?? 'null'); } catch { return {}; }
+    const steps = {};
+    for (const t of store?.tasks ?? []) if (typeof t.ref === 'string' && t.ref.startsWith('coach:')) steps[t.id] = t.ref.slice(6);
+    const out = {};
+    for (const x of store?.sessions ?? []) {
+        const id = steps[x.taskId];
+        const min = (new Date(x.endedAt) - new Date(x.startedAt)) / 60000;
+        if (!id || x.phase !== 'focus' || !(min > 0)) continue;
+        const o = (out[id] ??= { count: 0, minutes: 0 });
+        o.count += 1;
+        o.minutes += min;
+    }
+    return out;
+}
+
+const roundHours = (min) => Math.round(min / 30) / 2;
+
+/** Opens Simple Pomo with this step as the active task, sized to its planned hours. */
+function pomoLink(s, start = true) {
+    const a = appById.simple_pomo;
+    if (!a) return null;
+    const q = new URLSearchParams({
+        task: s.title, ref: `coach:${s.id}`, category: 'Roadmap', area: 'personal',
+        est: String(Math.max(1, Math.round((s.weeks * hoursPerWeek() * 60) / POMO_MIN))),
+    });
+    if (start) q.set('start', '1');
+    return h('a', { class: 'chip pomo', href: `${appUrl(a)}?${q}`, target: 'simplepomo', rel: 'noopener' }, '🍅 Focus in Simple Pomo');
+}
+
+function roadmapSteps() {
+    const r = Object.assign(emptyRoadmap(), state.roadmap);
+    const pomo = pomoTime();
+    return content.roadmap.steps.map((s) => {
+        const x = { ...s, ...r.edits[s.id] };
+        const typed = r.hours?.[s.id] ?? null;
+        const p = pomo[s.id] ?? null;
+        return {
+            ...x, weeks: x.weeks ?? 1, apps: (x.apps ?? []).filter((id) => appById[id]), pomo: p, typedHours: typed,
+            hours: typed ?? (p ? roundHours(p.minutes) : null), base: s, doneOn: r.done[s.id] ?? null, skipped: !!r.skipped[s.id],
+        };
+    });
+}
+
+const appChip = (a) => h('a', { class: 'chip', href: appUrl(a), target: '_blank', rel: 'noopener' }, h('span', {}, a.icon), a.name, ' ↗');
+const pomoLine = (p) => `🍅 ${plural(p.count, 'pomodoro')}, ${roundHours(p.minutes)} h`;
+
+function ensureRoadmapStarted() {
+    if (!state.roadmap?.started) editRoadmap((r) => { r.started = keyOf(mondayOf(new Date())); });
+}
+
+const markStep = (id, day) => editRoadmap((r) => { if (day) r.done[id] = day; else delete r.done[id]; });
+
+/** Planned weeks per step against how long each took: from the previous finish (or the roadmap start) to its own finish. */
+function roadmapProgress() {
+    const r = Object.assign(emptyRoadmap(), state.roadmap);
+    const today = startOfDay(new Date());
+    const mon = mondayOf(today), sun = addDays(mon, 6);
+    const start = mondayOf(r.started ? fromKey(r.started) : mon);
+    const startKey = keyOf(start);
+    const active = roadmapSteps().filter((s) => !s.skipped);
+    const done = active.filter((s) => s.doneOn);
+    const left = active.filter((s) => !s.doneOn);
+    const current = left[0] ?? null;
+    const thisWeek = done.filter((s) => s.doneOn >= keyOf(mon));
+
+    const took = {};
+    let since = startKey;
+    for (const s of [...done].sort((a, b) => a.doneOn.localeCompare(b.doneOn))) {
+        if (s.doneOn < since) continue;
+        took[s.id] = Math.max(1, daysBetween(since, s.doneOn) + (since === startKey ? 1 : 0));
+        since = s.doneOn;
+    }
+    const elapsed = daysBetween(since, keyOf(today)) + (since === startKey ? 1 : 0);
+
+    let leftWeeks = sumWeeks(left);
+    if (current) leftWeeks += Math.max(1, current.weeks - Math.max(0, Math.floor(daysBetween(since, keyOf(mon)) / 7))) - current.weeks;
+    const finish = left.length ? addDays(sun, 7 * (leftWeeks - (thisWeek.length ? 0 : 1))) : null;
+    const planned = addDays(start, 7 * sumWeeks(active) - 1);
+    const pastWeeks = Math.round((mon - start) / WEEK_MS);
+    const inRun = done.filter((s) => s.doneOn >= startKey);
+    const pace = pastWeeks >= 4 ? sumWeeks(inRun.filter((s) => s.doneOn < keyOf(mon))) / pastWeeks : null;
+    const timed = done.filter((s) => took[s.id] != null);
+    const logged = done.filter((s) => s.hours != null);
+    return {
+        active, done, thisWeek, current, finish, took, elapsed,
+        remaining: left.length,
+        slip: finish ? Math.round((finish - planned) / WEEK_MS) : 0,
+        weeks: pastWeeks + 1,
+        hits: new Set(inRun.map((s) => isoWeek(fromKey(s.doneOn)))).size,
+        pace,
+        paceFinish: pace && pace < 0.95 && left.length ? addDays(sun, 7 * Math.ceil(leftWeeks / pace)) : null,
+        plannedDays: sumWeeks(timed) * 7,
+        tookDays: timed.reduce((n, s) => n + took[s.id], 0),
+        hoursPlanned: sumWeeks(logged) * hoursPerWeek(),
+        hoursSpent: logged.reduce((n, s) => n + s.hours, 0),
+    };
+}
+
+/** What happened on the roadmap in the week starting `mon`, and the step that carried on after it. */
+function roadmapWeek(mon) {
+    const start = keyOf(mon), end = keyOf(addDays(mon, 7));
+    const active = roadmapSteps().filter((s) => !s.skipped);
+    return {
+        finished: active.filter((s) => s.doneOn && s.doneOn >= start && s.doneOn < end),
+        next: active.find((s) => !s.doneOn || s.doneOn >= end) ?? null,
+    };
+}
+
+function roadmapStatus(p, full = true) {
+    let finish = '🎉 Roadmap complete';
+    if (p.remaining) {
+        const vs = p.slip > 0 ? `${plural(p.slip, 'week')} later than first planned`
+            : p.slip < 0 ? `${plural(-p.slip, 'week')} ahead of plan` : 'on plan';
+        finish = `Finish ${fullDate(p.finish)} at the planned pace · ${vs}`;
+    }
+    const ratio = p.plannedDays ? p.tookDays / p.plannedDays : null;
+    return [
+        h('div', { class: 'bar big' }, h('span', { style: { width: (p.active.length ? (p.done.length / p.active.length) * 100 : 0) + '%' } })),
+        h('p', { class: 'muted small status' }, h('strong', {}, `${p.done.length} of ${p.active.length} steps`), ` · ${finish}`),
+        p.paceFinish && h('p', { class: 'muted small status' }, `At your pace so far (${Math.round(p.pace * 100)}% of the planned speed): ${fullDate(p.paceFinish)}`),
+        full && ratio != null && h('p', { class: 'muted small status' },
+            h('strong', {}, 'Planned vs actual: '), `finished steps were planned at ${fmtDays(p.plannedDays)} and took ${fmtDays(p.tookDays)} (${ratio.toFixed(1)}× the plan)`),
+        full && p.hoursSpent > 0 && h('p', { class: 'muted small status' },
+            h('strong', {}, 'Hours: '), `${p.hoursSpent} h logged against about ${p.hoursPlanned} h planned`),
+        p.weeks > 1 && h('p', { class: 'muted small status' }, `Hit ${p.hits} of ${p.weeks} weeks`),
+    ];
+}
+
+function renderRoadmapCard(d) {
+    if (!content.roadmap) return null;
+    ensureRoadmapStarted();
+    const p = roadmapProgress();
+    const s = p.current;
+    const day = keyOf(d) < todayKey() ? keyOf(d) : todayKey();
+    const early = p.thisWeek.length > 0;
+    return h('div', { class: 'card week-goal' },
+        h('div', { class: 'card-head' },
+            h('h3', {}, '🎯 This week\'s goal'),
+            h('button', { class: 'link', onclick: () => { ui.tab = 'plan'; saveUi(); render(false); } }, 'Roadmap ›')),
+        early && h('p', { class: 'done-line' }, `✅ Done this week: ${p.thisWeek.map((x) => x.title).join('; ')}`),
+        s ? [
+            h('div', { class: 'eyebrow' }, `${phaseOf(s).icon} ${phaseOf(s).title} · step ${p.done.length + 1} of ${p.active.length}`,
+                early && ' · up next: start early, or rest'),
+            h('p', { class: 'goal-text' }, s.title),
+            h('p', { class: 'muted small' }, h('strong', {}, 'Done when: '), s.doneWhen),
+            h('p', { class: 'muted small' + (p.elapsed > s.weeks * 7 ? ' over' : '') },
+                `⏱ ${p.elapsed > 0 ? `Day ${p.elapsed} on this step` : 'Starts now'} · planned ${plural(s.weeks, 'week')}`,
+                s.pomo && ` · ${pomoLine(s.pomo)}`),
+            h('div', { class: 'extras' }, pomoLink(s), s.apps.map((id) => appChip(appById[id]))),
+            h('div', { class: 'row-buttons' },
+                h('button', {
+                    class: 'btn primary', onclick: () => {
+                        markStep(s.id, day);
+                        toast('Step done. The next one is ready when you are.');
+                        render();
+                    },
+                }, '✅ Done'),
+                h('button', { class: 'btn', onclick: () => openRoadmapStep(s.id) }, 'Details and links')),
+        ] : h('p', { class: 'goal-text' }, `🎉 ${content.roadmap.goal}: done.`),
+        roadmapStatus(p, false));
+}
+
+function openRoadmapStep(id) {
+    const dlg = $('#step-dialog');
+    const steps = roadmapSteps();
+    const active = steps.filter((x) => !x.skipped);
+    const s = steps.find((x) => x.id === id);
+    const ph = phaseOf(s);
+    const reopen = () => { openRoadmapStep(id); render(); };
+    const p = roadmapProgress();
+    const took = p.took[id];
+    const weeksPick = h('select', {
+        class: 'compact', onchange: (e) => {
+            const n = Number(e.target.value);
+            editRoadmap((r) => {
+                const mine = { ...r.edits[id] };
+                if (n === (s.base.weeks ?? 1)) delete mine.weeks; else mine.weeks = n;
+                if (Object.keys(mine).length) r.edits[id] = mine; else delete r.edits[id];
+            });
+            reopen();
+        },
+    }, [1, 2, 3, 4, 6, 8].map((n) => h('option', { value: n, selected: n === s.weeks }, plural(n, 'week'))));
+    const time = h('div', { class: 'callout time' }, h('h5', {}, 'Time'),
+        h('div', { class: 'time-row' }, h('span', {}, 'Planned'), weeksPick, h('span', { class: 'muted small' }, `about ${s.weeks * hoursPerWeek()} h`)),
+        s.doneOn && took != null && h('div', { class: 'time-row' + (took > s.weeks * 7 * 1.25 ? ' over' : '') }, h('span', {}, 'Took'),
+            h('strong', {}, fmtDays(took)), h('span', { class: 'muted small' }, `${(took / (s.weeks * 7)).toFixed(1)}× the plan`)),
+        !s.doneOn && p.current?.id === id && h('div', { class: 'time-row' + (p.elapsed > s.weeks * 7 ? ' over' : '') }, h('span', {}, 'So far'),
+            h('strong', {}, p.elapsed > 0 ? fmtDays(p.elapsed) : 'starts now')),
+        h('div', { class: 'time-row' }, h('span', {}, 'Hours spent'),
+            h('input', {
+                type: 'number', min: 0, step: 0.5, class: 'line compact hours', value: s.typedHours ?? '',
+                placeholder: s.pomo ? `${roundHours(s.pomo.minutes)} (Pomo)` : 'optional',
+                oninput: (e) => editRoadmap((r) => {
+                    const v = parseFloat(e.target.value);
+                    r.hours = { ...r.hours };
+                    if (Number.isFinite(v) && v >= 0) r.hours[id] = v; else delete r.hours[id];
+                }),
+            })),
+        s.pomo && h('p', { class: 'muted small' }, `${pomoLine(s.pomo)} logged in Simple Pomo`,
+            s.typedHours != null ? '. The hours you typed win.' : '. Type hours to override.'));
+    const reword = (key, label) => [h('h5', {}, label), h('input', {
+        type: 'text', class: 'line', value: s[key],
+        oninput: (e) => editRoadmap((r) => {
+            const mine = { ...r.edits[id] };
+            const v = e.target.value.trim();
+            if (!v || v === s.base[key]) delete mine[key]; else mine[key] = v;
+            if (Object.keys(mine).length) r.edits[id] = mine; else delete r.edits[id];
+        }),
+    })];
+    dlg.replaceChildren(h('div', { class: 'dialog-body lesson', style: { '--c': 'var(--teal)' } },
+        h('div', { class: 'eyebrow' }, `${ph.icon} ${ph.title} · `, s.skipped ? 'skipped' : `step ${active.indexOf(active.find((x) => x.id === id)) + 1} of ${active.length}`),
+        h('h2', {}, s.title),
+        h('p', { class: 'idea' }, s.why),
+        h('div', { class: 'callout' }, h('h5', {}, 'Done when'), h('p', {}, s.doneWhen)),
+        time,
+        !s.doneOn && !s.skipped && h('div', { class: 'extras' }, pomoLink(s), s.apps.map((id) => appChip(appById[id]))),
+        (s.doneOn || s.skipped) && s.apps.length > 0 && h('div', { class: 'extras' }, s.apps.map((id) => appChip(appById[id]))),
+        readings(s.read, 'Read (free)'),
+        h('details', { class: 'reword' }, h('summary', {}, 'Reword this step'), reword('title', 'Step'), reword('doneWhen', 'Done when'))),
+    h('div', { class: 'dialog-actions' },
+        h('button', { class: 'btn ' + (s.doneOn ? '' : 'primary'), onclick: () => { markStep(id, s.doneOn ? null : todayKey()); reopen(); } },
+            s.doneOn ? `✓ Done ${shortDate(fromKey(s.doneOn))} (undo)` : '✅ Mark done'),
+        h('button', { class: 'btn', onclick: () => { editRoadmap((r) => { if (s.skipped) delete r.skipped[id]; else r.skipped[id] = true; }); reopen(); } },
+            s.skipped ? 'Unskip' : 'Skip'),
+        h('button', { class: 'btn', onclick: () => dlg.close() }, 'Close')));
+    dlg.onclose = () => render();
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+}
+
+function renderRoadmap() {
+    if (!content.roadmap) return null;
+    ensureRoadmapStarted();
+    const p = roadmapProgress();
+    const steps = roadmapSteps();
+    const open = ui.openPhases ?? [p.current?.phase];
+    return h('div', { class: 'card roadmap' },
+        h('h3', {}, `🎯 Roadmap: ${content.roadmap.title}`),
+        h('p', { class: 'muted' }, `${content.roadmap.goal}. ${content.roadmap.hours} One step at a time, planned at a week each unless you change it; a missed week carries the step over and the finish date moves with it.`),
+        roadmapStatus(p),
+        content.roadmap.phases.map((ph) => {
+            const list = steps.filter((s) => s.phase === ph.id);
+            const act = list.filter((s) => !s.skipped);
+            const n = act.filter((s) => s.doneOn).length;
+            const isOpen = open.includes(ph.id);
+            return h('section', { class: 'phase' },
+                h('button', {
+                    class: 'phase-head', onclick: () => {
+                        ui.openPhases = isOpen ? open.filter((x) => x !== ph.id) : [...open, ph.id];
+                        saveUi(); render();
+                    },
+                },
+                    h('span', {}, ph.icon), h('strong', { class: 'grow' }, ph.title),
+                    h('span', { class: 'count' + (act.length && n === act.length ? ' all' : '') }, `${n}/${act.length}`),
+                    h('span', { class: 'chev' + (isOpen ? ' open' : '') }, '›')),
+                isOpen && h('ol', { class: 'lessons' }, list.map((s) => {
+                    const now = s.id === p.current?.id;
+                    const took = s.doneOn ? p.took[s.id] : null;
+                    return h('li', {}, h('button', { class: [s.doneOn && 'done', s.skipped && 'skipped', now && 'current'].filter(Boolean).join(' '), onclick: () => openRoadmapStep(s.id) },
+                        h('span', { class: 'tick' }, s.doneOn ? '✓' : now ? '▶' : ''), h('span', { class: 'grow' }, s.title),
+                        s.skipped && h('span', { class: 'tag' }, 'skipped'),
+                        now && h('span', { class: 'tag' }, 'this week'),
+                        !s.doneOn && !s.skipped && s.weeks > 1 && h('span', { class: 'tag' }, `${s.weeks} wk`),
+                        took != null && h('span', { class: 'tag took' + (took > s.weeks * 7 * 1.25 ? ' over' : '') }, `took ${fmtDays(took)}`)));
+                })));
+        }));
+}
 // -- Today --
 
 function renderToday() {
@@ -535,6 +840,9 @@ function renderToday() {
         h('div', { class: 'habit-row' }, [...planned].map((x) =>
             h('span', { class: 'habit-dot' + (done.has(x) ? ' on' : ''), title: habitById[x].title, style: { '--c': areaColor(habitById[x].area) } },
                 habitById[x].icon)))));
+
+    const roadmapCard = renderRoadmapCard(viewDate);
+    if (roadmapCard) frag.append(roadmapCard);
 
     // Top 3
     frag.append(h('div', { class: 'card' },
@@ -602,9 +910,17 @@ function greeting(min) {
 
 function renderStep(k, s, isDone) {
     const extras = [];
+    const goal = s.roadmap && content.roadmap ? roadmapProgress().current : null;
+    if (s.roadmap && content.roadmap) {
+        extras.push(goal
+            ? h('button', { class: 'practice', onclick: () => openRoadmapStep(goal.id) }, h('b', {}, '🎯 '), goal.title)
+            : h('span', { class: 'chip' }, '🎉 Roadmap complete'));
+        if (goal && s.roadmap === 'read') extras.push(...(goal.read ?? []).map((r) => h('a', { class: 'chip', href: r.url, target: '_blank', rel: 'noopener' }, '📖 ', r.title, ' ↗')));
+        else if (goal) extras.push(pomoLink(goal), ...goal.apps.map((id) => appChip(appById[id])));
+    }
     if (s.app && appById[s.app]) {
         const a = appById[s.app];
-        extras.push(h('a', { class: 'chip', href: appUrl(a), target: '_blank', rel: 'noopener' }, h('span', {}, a.icon), a.name, ' ↗'));
+        extras.push(appChip(a));
     }
     if (s.track) {
         const l = nextLesson(s.track);
@@ -636,7 +952,7 @@ function renderStep(k, s, isDone) {
                 render();
             }),
             h('span', {}, s.text, habit && h('span', { class: 'tag', title: 'Counts toward this habit' }, habit.icon))),
-        extras.length && h('div', { class: 'extras' }, extras));
+        extras.length > 0 && h('div', { class: 'extras' }, extras));
 }
 
 /** The most recently opened lesson in a track, or the next one: what you're practising this week. */
@@ -784,12 +1100,13 @@ const WEEK_FIELDS = [
     ['family', 'Family highlight', 'A moment with the kids or with your wife'],
     ['stop', 'One thing to stop', 'A commitment, a habit, or a meeting'],
 ];
-const BIG3 = [['craft', '🛠 Craft'], ['lead', '🧭 Leadership'], ['gig', '🚀 Gig'], ['family', '🏡 Family']];
+const BIG3 = [['lead', '🧭 Leadership'], ['family', '🏡 Family'], ['self', '🪔 Health & spirit']];
 
 function renderWeekReview() {
     const mon = mondayOf(viewDate);
     const wk = isoWeek(viewDate);
     const w = state.weeks[wk] ?? {};
+    const rw = content.roadmap ? roadmapWeek(mon) : null;
     const end = addDays(mon, 7);
     const { stats, moods, energies } = habitStats(end, 7);
     const lessonsDone = Object.entries(state.lessons).filter(([, v]) => v.done && v.doneOn >= keyOf(mon) && v.doneOn < keyOf(end));
@@ -808,13 +1125,23 @@ function renderWeekReview() {
                 h('small', {}, `${x.done}/${x.planned}`)))),
             h('p', { class: 'muted small' },
                 `Mood ${avg(moods)?.toFixed(1) ?? '–'} · Energy ${avg(energies)?.toFixed(1) ?? '–'} · Lessons done ${lessonsDone.length}`)),
+        rw && h('div', { class: 'card week-goal' },
+            h('h3', {}, '🎯 Roadmap this week'),
+            rw.finished.length > 0
+                ? h('p', { class: 'done-line' }, `✅ Finished: ${rw.finished.map((s) => s.title).join('; ')}`)
+                : rw.next && h('p', {}, h('strong', {}, 'Not finished: '), rw.next.title,
+                    h('span', { class: 'muted' }, '. It carries over to next week, and the finish date moves out a week. That\'s fine: keep going.')),
+            rw.finished.length > 0 && rw.next && h('p', { class: 'muted small' }, h('strong', {}, 'Next week: '), rw.next.title),
+            h('h5', {}, rw.finished.length ? 'What made it work?' : 'What got in the way?'),
+            h('textarea', { class: 'short', value: w.stepNote ?? '', placeholder: 'One or two lines.', oninput: (e) => editWeek(wk, (x) => { x.stepNote = e.target.value; }) }),
+            roadmapStatus(roadmapProgress())),
         h('div', { class: 'card' },
             h('h3', {}, 'Look back'),
             WEEK_FIELDS.map(([key, label, ph]) => [h('h5', {}, label),
                 h('textarea', { class: 'short', value: w[key] ?? '', placeholder: ph, oninput: (e) => editWeek(wk, (x) => { x[key] = e.target.value; }) })])),
         h('div', { class: 'card' },
             h('h3', {}, 'Next week\'s Big 3'),
-            h('p', { class: 'muted' }, 'One outcome per area. Small and specific beats ambitious and vague.'),
+            h('p', { class: 'muted' }, 'Craft and the gig are the roadmap step. One outcome for each of the rest: small and specific beats ambitious and vague.'),
             BIG3.map(([key, label]) => h('div', { class: 'big3' }, h('span', {}, label),
                 h('input', {
                     type: 'text', class: 'line', value: w.big3?.[key] ?? '',
@@ -868,6 +1195,8 @@ function renderStats() {
 
 function renderPlan() {
     const frag = h('div', { class: 'stack' });
+    const roadmap = renderRoadmap();
+    if (roadmap) frag.append(roadmap);
     frag.append(renderGoals());
     const adjust = renderAdjust();
     if (adjust) frag.append(adjust);
@@ -1225,7 +1554,7 @@ function renderDrawer() {
             h('input', {
                 type: 'text', class: 'line compact', value: state.settings?.family?.[f.id] ?? '', placeholder: f.name,
                 oninput: (e) => {
-                    state.settings = { family: { ...state.settings?.family, [f.id]: e.target.value }, updated: Date.now() };
+                    state.settings = { ...state.settings, family: { ...state.settings?.family, [f.id]: e.target.value }, updated: Date.now() };
                     saveState();
                 },
                 onchange: () => render(),
